@@ -50,8 +50,16 @@ public class SongApplication {
 	}
 
 	private static void configureRenderPostgresUrl() {
-		String databaseUrl = System.getenv("DATABASE_URL");
-		if (databaseUrl == null || databaseUrl.isBlank()) {
+		String databaseUrl = firstNonBlank(
+				System.getenv("DATABASE_URL"),
+				System.getenv("JDBC_DATABASE_URL")
+		);
+		if (databaseUrl == null) {
+			return;
+		}
+
+		if (databaseUrl.startsWith("jdbc:postgresql://")) {
+			applyPostgresSettings(databaseUrl);
 			return;
 		}
 
@@ -61,19 +69,17 @@ public class SongApplication {
 
 		try {
 			URI uri = new URI(databaseUrl);
-			String schemeSpecificHost = uri.getHost();
-			if (schemeSpecificHost == null || schemeSpecificHost.isBlank()) {
+			String host = uri.getHost();
+			if (host == null || host.isBlank()) {
 				return;
 			}
 
 			int port = uri.getPort() > 0 ? uri.getPort() : 5432;
 			String path = uri.getPath() == null ? "" : uri.getPath();
 			String query = uri.getQuery() == null ? "" : "?" + uri.getQuery();
-			String jdbcUrl = "jdbc:postgresql://" + schemeSpecificHost + ":" + port + path + query;
+			String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + path + query;
 
-			System.setProperty("spring.datasource.url", jdbcUrl);
-			System.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
-			System.setProperty("spring.jpa.database-platform", "org.hibernate.dialect.PostgreSQLDialect");
+			applyPostgresSettings(jdbcUrl);
 
 			String userInfo = uri.getUserInfo();
 			if (userInfo != null && userInfo.contains(":")) {
@@ -88,6 +94,21 @@ public class SongApplication {
 		} catch (URISyntaxException ignored) {
 			// Keep default datasource settings when DATABASE_URL is malformed.
 		}
+	}
+
+	private static void applyPostgresSettings(String jdbcUrl) {
+		System.setProperty("spring.datasource.url", jdbcUrl);
+		System.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
+		System.setProperty("spring.jpa.database-platform", "org.hibernate.dialect.PostgreSQLDialect");
+	}
+
+	private static String firstNonBlank(String... values) {
+		for (String value : values) {
+			if (value != null && !value.isBlank()) {
+				return value;
+			}
+		}
+		return null;
 	}
 
 }
