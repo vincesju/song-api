@@ -4,6 +4,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
+
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 
 @SpringBootApplication
@@ -42,7 +45,49 @@ public class SongApplication {
 	}
 
 	public static void main(String[] args) {
+		configureRenderPostgresUrl();
 		SpringApplication.run(SongApplication.class, args);
+	}
+
+	private static void configureRenderPostgresUrl() {
+		String databaseUrl = System.getenv("DATABASE_URL");
+		if (databaseUrl == null || databaseUrl.isBlank()) {
+			return;
+		}
+
+		if (!(databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://"))) {
+			return;
+		}
+
+		try {
+			URI uri = new URI(databaseUrl);
+			String schemeSpecificHost = uri.getHost();
+			if (schemeSpecificHost == null || schemeSpecificHost.isBlank()) {
+				return;
+			}
+
+			int port = uri.getPort() > 0 ? uri.getPort() : 5432;
+			String path = uri.getPath() == null ? "" : uri.getPath();
+			String query = uri.getQuery() == null ? "" : "?" + uri.getQuery();
+			String jdbcUrl = "jdbc:postgresql://" + schemeSpecificHost + ":" + port + path + query;
+
+			System.setProperty("spring.datasource.url", jdbcUrl);
+			System.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
+			System.setProperty("spring.jpa.database-platform", "org.hibernate.dialect.PostgreSQLDialect");
+
+			String userInfo = uri.getUserInfo();
+			if (userInfo != null && userInfo.contains(":")) {
+				String[] parts = userInfo.split(":", 2);
+				if (!parts[0].isBlank()) {
+					System.setProperty("spring.datasource.username", parts[0]);
+				}
+				if (!parts[1].isBlank()) {
+					System.setProperty("spring.datasource.password", parts[1]);
+				}
+			}
+		} catch (URISyntaxException ignored) {
+			// Keep default datasource settings when DATABASE_URL is malformed.
+		}
 	}
 
 }
